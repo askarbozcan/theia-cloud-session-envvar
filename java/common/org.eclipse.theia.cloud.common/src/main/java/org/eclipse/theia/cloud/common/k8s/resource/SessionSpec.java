@@ -16,6 +16,8 @@
  ********************************************************************************/
 package org.eclipse.theia.cloud.common.k8s.resource;
 
+import java.util.Map;
+
 import org.eclipse.theia.cloud.common.util.TheiaCloudError;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -25,7 +27,7 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 @JsonDeserialize()
 public class SessionSpec implements UserScopedSpec {
 
-    public static final String API = "theia.cloud/v3beta";
+    public static final String API = "theia.cloud/v4beta";
     public static final String KIND = "Session";
     public static final String CRD_NAME = "sessions.theia.cloud";
 
@@ -53,6 +55,9 @@ public class SessionSpec implements UserScopedSpec {
     @JsonProperty("sessionSecret")
     private String sessionSecret;
 
+    @JsonProperty("envVars")
+    private Map<String, String> envVars;
+
     public SessionSpec() {
     }
 
@@ -61,10 +66,18 @@ public class SessionSpec implements UserScopedSpec {
     }
 
     public SessionSpec(String name, String appDefinition, String user, String workspace) {
-	this.name = name;
-	this.appDefinition = appDefinition;
-	this.user = user;
-	this.workspace = workspace;
+        this(name, appDefinition, user, workspace, Map.of());
+    }
+
+    public SessionSpec(
+        String name, String appDefinition, String user, String workspace, 
+        Map<String, String> envVars
+    ) {
+        this.name = name;
+        this.appDefinition = appDefinition;
+        this.user = user;
+        this.workspace = workspace;
+        this.envVars = envVars;
     }
 
     public String getName() {
