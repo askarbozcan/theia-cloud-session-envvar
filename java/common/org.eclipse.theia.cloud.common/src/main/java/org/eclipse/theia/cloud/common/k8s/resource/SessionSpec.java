@@ -57,7 +57,7 @@ public class SessionSpec implements UserScopedSpec {
 
     @JsonProperty("envVars")
     private Map<String, String> envVars;
-
+        
     public SessionSpec() {
     }
 
@@ -143,6 +143,10 @@ public class SessionSpec implements UserScopedSpec {
 
     public String getWorkspace() {
 	return workspace;
+    }
+
+    public Map<String, String> getEnvVars() {
+        return envVars;
     }
 
     @JsonIgnore
