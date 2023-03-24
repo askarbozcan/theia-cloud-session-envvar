@@ -93,12 +93,13 @@ public final class JavaResourceUtil {
         try {
             containersNode = tree
             .get("spec")
+            .get("template")
             .get("spec")
             .get("containers");
 
         } catch (NullPointerException npe) {
             NoSuchElementException e = new NoSuchElementException(containerName);
-            LOGGER.error("Deployment yaml is malformed? spec.spec.containers map does not exist?", e);
+            LOGGER.error("Deployment yaml is malformed? spec.template.spec.containers map does not exist?", e);
             throw e;
         }
 
@@ -107,7 +108,7 @@ public final class JavaResourceUtil {
         JsonNode containerSpec = null;
         int containerSpecIdx = 0; // for later referencing
         for (JsonNode contJsonNode : containersNode) {
-            if (contJsonNode.get("name").asText() == containerName) {
+            if (contJsonNode.get("name").asText().equals(containerName)) {
                 containerSpec = contJsonNode;
                 break;
             }
