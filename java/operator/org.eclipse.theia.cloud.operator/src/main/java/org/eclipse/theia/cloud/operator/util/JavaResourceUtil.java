@@ -25,14 +25,33 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.Serializable;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Set;
 import java.util.Map.Entry;
 import java.util.stream.Collectors;
 
+import javax.annotation.Nullable;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 
 public final class JavaResourceUtil {
 
@@ -54,6 +73,82 @@ public final class JavaResourceUtil {
 	    }
 	    return template;
 	}
+    }
+
+    public static String addEnvVarMapToDeploymentYaml(
+        String yaml, Map<String, String> envVarMap, String containerName) throws NoSuchElementException, JsonProcessingException {
+        // Read the yaml
+        ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
+        JsonNode tree;
+        try {
+            tree = mapper.readTree(yaml);    
+        } catch (JsonProcessingException  e) {
+            LOGGER.debug("Failed to process yaml when trying to " +
+                         "add environments variables to deployment yaml. Returning original yaml string", e);
+            return yaml; 
+        }
+
+        // check if it contains the required fields
+        JsonNode containersNode;
+        try {
+            containersNode = tree
+            .get("spec")
+            .get("spec")
+            .get("containers");
+
+        } catch (NullPointerException npe) {
+            NoSuchElementException e = new NoSuchElementException(containerName);
+            LOGGER.error("Deployment yaml is malformed? spec.spec.containers map does not exist?", e);
+            throw e;
+        }
+
+
+        // Add to env map of container (or create 'env' if it does not exist)
+        JsonNode containerSpec = null;
+        int containerSpecIdx = 0; // for later referencing
+        for (JsonNode contJsonNode : containersNode) {
+            if (contJsonNode.get("name").asText() == containerName) {
+                containerSpec = contJsonNode;
+                break;
+            }
+            containerSpecIdx++;
+        }
+
+        if (containerSpec == null) {
+            throw new NoSuchElementException("Container with name '" + containerName + "' does not exist in spec.");
+        }
+
+        String cName = containerSpec.get("name").asText();
+        JsonNode existingEnv = containerSpec.get("env");
+        Map<String, String> newEnvMap = new HashMap<>();
+        if (existingEnv != null) {
+            for (JsonNode envKeyValue : existingEnv) {
+                newEnvMap.put(
+                    envKeyValue.get("name").asText(), 
+                    envKeyValue.get("value").asText()
+                );
+            }
+        }
+
+        newEnvMap.putAll(envVarMap); // add new values to existing parsed env values
+
+        // convert it into a json node we can plug into the tree
+        ArrayNode newEnvMapNode = mapper.createArrayNode();
+        for (Entry<String, String> kv : newEnvMap.entrySet()) {
+            ObjectNode entry = mapper.createObjectNode();
+            entry.put("name", kv.getKey());
+            entry.put("value", kv.getValue());
+            newEnvMapNode.add(entry);
+        }
+
+        // update "env" map in spec.spec.containers[containerIdx]
+        ObjectNode containerNodeObj = (ObjectNode) containersNode.get(containerSpecIdx);
+        containerNodeObj.set("env", newEnvMapNode);
+        
+
+        // Finally return serialized updated tree
+        byte[] serialized = mapper.writeValueAsBytes(tree);
+        return new String(serialized, StandardCharsets.UTF_8);
     }
 
     protected static InputStream getInputStream(String resourceName, String correlationId)
