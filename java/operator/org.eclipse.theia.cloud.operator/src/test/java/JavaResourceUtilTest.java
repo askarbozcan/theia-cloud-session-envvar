@@ -31,12 +31,6 @@ public class JavaResourceUtilTest {
 
         String testYaml = new String(Files.readAllBytes(Paths.get(testYamlPath)));
         String expectedYaml = new String(Files.readAllBytes(Paths.get(expectedYamlPath)));
-        System.out.println("TEST YAMKL\n===========");
-        System.out.println(testYaml);
-        System.out.println("EXPECTED\n===========");
-        System.out.println(expectedYaml);
-        System.out.println("DAŞŞAK");
-
         Map<String, String> newEnvVars = Map.of(
             "UNICORN_COLOR", "orange",
             "HIPPO_WEIGHT", "89kg"
@@ -47,12 +41,7 @@ public class JavaResourceUtilTest {
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
         JsonNode expectedTree = mapper.readTree(expectedYaml);
         JsonNode producedTree = mapper.readTree(producedYaml);
-        
-        System.out.println("EXPECTED\n===========");
-        System.out.println(expectedTree.toPrettyString());
-        System.out.println("PRODUCED\n===========");
-        System.out.println(producedTree.toPrettyString());
-        System.out.println("DAŞŞAK");
+
         assertEquals(expectedTree, producedTree);
     }
 
