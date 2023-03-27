@@ -24,6 +24,7 @@ import java.net.URISyntaxException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 
 import org.apache.logging.log4j.LogManager;
@@ -329,6 +330,9 @@ public class LazySessionHandler implements SessionHandler {
 	try {
 	    deploymentYaml = JavaResourceUtil.readResourceAndReplacePlaceholders(templateYaml, replacements,
 		    correlationId);
+        deploymentYaml = JavaResourceUtil.addEnvVarMapToDeploymentYaml(
+            deploymentYaml, session.getSpec().getEnvVars(), appDefinition.getSpec().getName());
+
 	} catch (IOException | URISyntaxException e) {
 	    LOGGER.error(formatLogMessage(correlationId, "Error while adjusting template for session " + session), e);
 	    return;
