@@ -138,7 +138,12 @@ public class DefaultDeploymentTemplateReplacements implements DeploymentTemplate
 	    }
 	    environmentVariables.put(PLACEHOLDER_ENABLE_ACTIVITY_TRACKER,
 		    arguments.isEnableActivityTracker() ? "true" : "false");
-	}
+	} else {
+        // if monitor is not enabled just set to app port + 1 to prevent parsing bugs
+        // TODO: Ideally just remove it from the yaml
+        int monitorPort = appDefinition.getSpec().getPort()+1;
+        environmentVariables.put(PLACEHOLDER_MONITOR_PORT, String.valueOf(monitorPort)); 
+    }
 	return environmentVariables;
     }
 
