@@ -52,6 +52,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.google.common.base.Optional;
 
 public final class JavaResourceUtil {
 
@@ -75,51 +76,31 @@ public final class JavaResourceUtil {
 	}
     }
 
+
+    /* ------ Utils for adding enviornment variables to deployment specs ----- */
     public static String addEnvVarMapToDeploymentYaml(
         String yaml, Map<String, String> envVarMap, String containerName) throws NoSuchElementException, JsonProcessingException {
         // Read the yaml
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-        JsonNode tree;
-        try {
-            tree = mapper.readTree(yaml);    
-        } catch (JsonProcessingException  e) {
-            LOGGER.debug("Failed to process yaml when trying to " +
-                         "add environments variables to deployment yaml. Returning original yaml string", e);
-            return yaml; 
-        }
+        JsonNode tree = mapper.readTree(yaml);
 
-        // check if it contains the required fields
-        JsonNode containersNode;
-        try {
-            containersNode = tree
-            .get("spec")
-            .get("template")
-            .get("spec")
-            .get("containers");
-
-        } catch (NullPointerException npe) {
-            NoSuchElementException e = new NoSuchElementException(containerName);
-            LOGGER.error("Deployment yaml is malformed? spec.template.spec.containers map does not exist?", e);
+        Optional<JsonNode> maybeContainersNode = parseContainersNode(tree);
+        if (!maybeContainersNode.isPresent()) {
+            RuntimeException e = new RuntimeException("Failed to add environment variables map to deployment yaml.");
+            LOGGER.error("Failed to add environment variables map to deployment yaml.", e);
             throw e;
         }
-
+        JsonNode containersNode = maybeContainersNode.get();
 
         // Add to env map of container (or create 'env' if it does not exist)
-        JsonNode containerSpec = null;
-        int containerSpecIdx = 0; // for later referencing
-        for (JsonNode contJsonNode : containersNode) {
-            if (contJsonNode.get("name").asText().equals(containerName)) {
-                containerSpec = contJsonNode;
-                break;
-            }
-            containerSpecIdx++;
-        }
+        ContainerSpecJsonNode containerSpecAndIdx = getContainerSpecNode(containersNode, containerName);
+        JsonNode containerSpec = containerSpecAndIdx.node;
+        int containerSpecIdx = containerSpecAndIdx.idx;
 
         if (containerSpec == null) {
             throw new NoSuchElementException("Container with name '" + containerName + "' does not exist in spec.");
         }
 
-        String cName = containerSpec.get("name").asText();
         JsonNode existingEnv = containerSpec.get("env");
         Map<String, String> newEnvMap = new HashMap<>();
         if (existingEnv != null) {
@@ -151,6 +132,50 @@ public final class JavaResourceUtil {
         byte[] serialized = mapper.writeValueAsBytes(tree);
         return new String(serialized, StandardCharsets.UTF_8);
     }
+
+
+    /* -------------- Util to find JSON node of the container spec -------------- */
+    private static Optional<JsonNode> parseContainersNode(JsonNode tree) {
+
+        // check if it contains the required fields
+        JsonNode containersNode;
+        try {
+            containersNode = tree
+            .get("spec")
+            .get("template")
+            .get("spec")
+            .get("containers");
+
+        } catch (NullPointerException npe) {
+            LOGGER.warn("Deployment yaml is malformed? spec.template.spec.containers map does not exist?", npe);
+            return Optional.absent();
+        }
+
+        return Optional.of(containersNode);
+    }
+    private static final class ContainerSpecJsonNode {
+        public JsonNode node;
+        public int idx;
+
+        ContainerSpecJsonNode(JsonNode node, int idx) {
+            this.node = node;
+            this.idx = idx;
+        }
+    }
+    private static ContainerSpecJsonNode getContainerSpecNode(JsonNode containersNode, String containerName) {
+        JsonNode containerSpec = null;
+        int containerSpecIdx = 0; // for later referencing
+        for (JsonNode contJsonNode : containersNode) {
+            if (contJsonNode.get("name").asText().equals(containerName)) {
+                containerSpec = contJsonNode;
+                break;
+            }
+            containerSpecIdx++;
+        }
+
+        return new ContainerSpecJsonNode(containerSpec, containerSpecIdx);
+    }   
+
 
     protected static InputStream getInputStream(String resourceName, String correlationId)
 	    throws FileNotFoundException {
