@@ -16,6 +16,7 @@
  ********************************************************************************/
 package org.eclipse.theia.cloud.common.k8s.resource;
 
+import java.util.List;
 import java.util.Map;
 
 import org.eclipse.theia.cloud.common.util.TheiaCloudError;
@@ -58,6 +59,12 @@ public class SessionSpec implements UserScopedSpec {
     @JsonProperty("envVars")
     private Map<String, String> envVars;
         
+    @JsonProperty("envVarsFromConfigMaps")
+    private List<String> envVarsFromConfigMaps;
+
+    @JsonProperty("envVarsFromSecrets")
+    private List<String> envVarsFromSecrets;
+
     public SessionSpec() {
     }
 
@@ -66,18 +73,32 @@ public class SessionSpec implements UserScopedSpec {
     }
 
     public SessionSpec(String name, String appDefinition, String user, String workspace) {
-        this(name, appDefinition, user, workspace, Map.of());
+        this(name, appDefinition, user, workspace, Map.of(), List.of(), List.of());
+    }
+    public SessionSpec(
+        String name, String appDefinition, String user, String workspace, Map<String, String> envVars
+    )  {
+        this(name, appDefinition, user, workspace, envVars, List.of(), List.of());
     }
 
     public SessionSpec(
         String name, String appDefinition, String user, String workspace, 
-        Map<String, String> envVars
+        Map<String, String> envVars, List<String> envVarsFromConfigMaps
+    ) { 
+        this(name, appDefinition, user, workspace, envVars, envVarsFromConfigMaps, List.of());
+    }
+
+    public SessionSpec(
+        String name, String appDefinition, String user, String workspace, 
+        Map<String, String> envVars, List<String> envVarsFromConfigMaps, List<String> envVarsFromSecrets
     ) {
         this.name = name;
         this.appDefinition = appDefinition;
         this.user = user;
         this.workspace = workspace;
         this.envVars = envVars;
+        this.envVarsFromConfigMaps = envVarsFromConfigMaps;
+        this.envVarsFromSecrets = envVarsFromSecrets;
     }
 
     public String getName() {
