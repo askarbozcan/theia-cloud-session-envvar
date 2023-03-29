@@ -25,34 +25,24 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.Serializable;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.Set;
 import java.util.Map.Entry;
 import java.util.stream.Collectors;
-
-import javax.annotation.Nullable;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import com.google.common.base.Optional;
 
 public final class JavaResourceUtil {
 
@@ -78,28 +68,28 @@ public final class JavaResourceUtil {
 
 
     /* ------ Utils for adding enviornment variables to deployment specs ----- */
+
+    public static class MalformedDeploymentYamlException extends RuntimeException {
+        MalformedDeploymentYamlException(String msg) {
+            super(msg);
+        }
+    }
+
     public static String addEnvVarMapToDeploymentYaml(
         String yaml, Map<String, String> envVarMap, String containerName) throws NoSuchElementException, JsonProcessingException {
+
+        if (envVarMap.size() == 0) {
+            return yaml;
+        }
+
         // Read the yaml
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
         JsonNode tree = mapper.readTree(yaml);
 
-        Optional<JsonNode> maybeContainersNode = parseContainersNode(tree);
-        if (!maybeContainersNode.isPresent()) {
-            RuntimeException e = new RuntimeException("Failed to add environment variables map to deployment yaml.");
-            LOGGER.error("Failed to add environment variables map to deployment yaml.", e);
-            throw e;
-        }
-        JsonNode containersNode = maybeContainersNode.get();
+        JsonNode containersNode = getContainersNode(tree);
 
         // Add to env map of container (or create 'env' if it does not exist)
-        ContainerSpecJsonNode containerSpecAndIdx = getContainerSpecNode(containersNode, containerName);
-        JsonNode containerSpec = containerSpecAndIdx.node;
-        int containerSpecIdx = containerSpecAndIdx.idx;
-
-        if (containerSpec == null) {
-            throw new NoSuchElementException("Container with name '" + containerName + "' does not exist in spec.");
-        }
+        JsonNode containerSpec = getContainerSpecNode(containersNode, containerName);
 
         JsonNode existingEnv = containerSpec.get("env");
         Map<String, String> newEnvMap = new HashMap<>();
@@ -124,18 +114,57 @@ public final class JavaResourceUtil {
         }
 
         // update "env" map in spec.spec.containers[containerIdx]
-        ObjectNode containerNodeObj = (ObjectNode) containersNode.get(containerSpecIdx);
+        ObjectNode containerNodeObj = (ObjectNode) containerSpec;
         containerNodeObj.set("env", newEnvMapNode);
         
-
         // Finally return serialized updated tree
+        byte[] serialized = mapper.writeValueAsBytes(tree);
+        return new String(serialized, StandardCharsets.UTF_8);
+    }
+
+    public static String addConfigMapRefToEnvFromDeploymentYaml(String yaml, List<String> cmNames, String containerName, boolean fromSecretRef) throws JsonProcessingException {
+        if (cmNames.size() == 0) {
+            return yaml;
+        }
+
+        // Read the yaml
+        ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
+        JsonNode tree = mapper.readTree(yaml);
+
+        JsonNode containersNode = getContainersNode(tree);
+        JsonNode containerSpec = getContainerSpecNode(containersNode, containerName);
+        
+        // get envFrom map (or create if doesn't exist)
+        JsonNode envFromNode = containerSpec.get("envFrom");
+        ObjectNode objContainerNode = (ObjectNode) containerSpec;
+        if (envFromNode == null) {
+            objContainerNode.set("envFrom", mapper.createArrayNode());
+            envFromNode = containerSpec.get("envFrom");
+        }
+
+        String refMetaName = fromSecretRef ? "secretRef" : "configMapRef";
+        ArrayNode arrEnvFromNode = (ArrayNode) envFromNode;
+        for (String cmName : cmNames) {
+            // name: cmName
+            ObjectNode refNameNode = mapper.createObjectNode();
+            refNameNode.put("name", cmName);
+
+            // configMapRef:
+            //  name: cmName
+            ObjectNode newRefNode = mapper.createObjectNode();
+            newRefNode.set(refMetaName, refNameNode);
+
+            // add to the envFrom array
+            arrEnvFromNode.add(newRefNode);
+        }
+
         byte[] serialized = mapper.writeValueAsBytes(tree);
         return new String(serialized, StandardCharsets.UTF_8);
     }
 
 
     /* -------------- Util to find JSON node of the container spec -------------- */
-    private static Optional<JsonNode> parseContainersNode(JsonNode tree) {
+    private static JsonNode getContainersNode(JsonNode tree) {
 
         // check if it contains the required fields
         JsonNode containersNode;
@@ -147,34 +176,28 @@ public final class JavaResourceUtil {
             .get("containers");
 
         } catch (NullPointerException npe) {
-            LOGGER.warn("Deployment yaml is malformed? spec.template.spec.containers map does not exist?", npe);
-            return Optional.absent();
+            MalformedDeploymentYamlException e = new MalformedDeploymentYamlException("Deployment yaml is malformed? spec.template.spec.containers field does not exist?");
+            LOGGER.error("Malformed deployment yaml", e);
+            throw e;
         }
 
-        return Optional.of(containersNode);
+        return containersNode;
     }
-    private static final class ContainerSpecJsonNode {
-        public JsonNode node;
-        public int idx;
-
-        ContainerSpecJsonNode(JsonNode node, int idx) {
-            this.node = node;
-            this.idx = idx;
-        }
-    }
-    private static ContainerSpecJsonNode getContainerSpecNode(JsonNode containersNode, String containerName) {
+    private static JsonNode getContainerSpecNode(JsonNode containersNode, String containerName) {
         JsonNode containerSpec = null;
-        int containerSpecIdx = 0; // for later referencing
         for (JsonNode contJsonNode : containersNode) {
             if (contJsonNode.get("name").asText().equals(containerName)) {
                 containerSpec = contJsonNode;
                 break;
             }
-            containerSpecIdx++;
         }
-
-        return new ContainerSpecJsonNode(containerSpec, containerSpecIdx);
-    }   
+        
+        if (containerSpec == null) {
+            throw new NoSuchElementException("Container with name '" + containerName + "' does not exist in spec.");
+        } else {
+            return containerSpec;
+        }   
+    }
 
 
     protected static InputStream getInputStream(String resourceName, String correlationId)
