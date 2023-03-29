@@ -50,6 +50,7 @@ import org.eclipse.theia.cloud.operator.handler.util.TheiaCloudPersistentVolumeU
 import org.eclipse.theia.cloud.operator.handler.util.TheiaCloudServiceUtil;
 import org.eclipse.theia.cloud.operator.util.JavaResourceUtil;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.inject.Inject;
 
 import io.fabric8.kubernetes.api.model.ConfigMap;
@@ -330,8 +331,19 @@ public class LazySessionHandler implements SessionHandler {
 	try {
 	    deploymentYaml = JavaResourceUtil.readResourceAndReplacePlaceholders(templateYaml, replacements,
 		    correlationId);
+
+        String containerName = appDefinition.getSpec().getName();
         deploymentYaml = JavaResourceUtil.addEnvVarMapToDeploymentYaml(
-            deploymentYaml, session.getSpec().getEnvVars(), appDefinition.getSpec().getName());
+            deploymentYaml, session.getSpec().getEnvVars(), containerName
+        );
+        
+        deploymentYaml = JavaResourceUtil.addConfigMapRefToEnvFromDeploymentYaml(
+            deploymentYaml, session.getSpec().getEnvVarsFromConfigMaps(), containerName, false
+        );
+
+        deploymentYaml = JavaResourceUtil.addConfigMapRefToEnvFromDeploymentYaml(
+            deploymentYaml, session.getSpec().getEnvVarsFromSecrets(), containerName, true
+        );
 
 	} catch (IOException | URISyntaxException e) {
 	    LOGGER.error(formatLogMessage(correlationId, "Error while adjusting template for session " + session), e);
