@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: placeholder-depname
+  namespace: placeholder-namespace
+  ownerReferences:
+    - apiVersion: theia.cloud/v4beta
+      kind: AppDefinition
+      name: placeholder
+      uid: placeholder
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: placeholder-app
+  template:
+    metadata:
+      labels:
+        app: placeholder-app
+    spec:
+      containers:
+        - name: oauth2-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy
+
+        - name: placeholder-definitionname
+          image: placeholder-image
+          env:
+          - name: THEIACLOUD_APP_ID
+            value: placeholder-env-app-id
+          - name: UNICORN_COLOR
+            value: orange
+          - name: HIPPO_WEIGHT
+            value: 89kg
+          securityContext:
+            runAsUser: 1
+            runAsGroup: 1
